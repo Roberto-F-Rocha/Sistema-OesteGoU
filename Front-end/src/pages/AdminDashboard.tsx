@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import {
+  Activity,
   Bell,
   Bus,
   Calendar,
@@ -25,6 +26,7 @@ import AdminPickupPoints from "./admin/AdminPickupPoints";
 import AdminDocuments from "./admin/AdminDocuments";
 import AdminPush from "./admin/AdminPush";
 import AdminPartnerships from "./admin/AdminPartnerships";
+import AdminAnalytics from "./admin/AdminAnalytics";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -33,6 +35,7 @@ export default function AdminDashboard() {
 
   const navItems = [
     { label: "Painel", path: "/admin", icon: LayoutDashboard },
+    { label: "Analytics", path: "/admin/analytics", icon: Activity },
     { label: "Parcerias", path: "/admin/parcerias", icon: Link2 },
     { label: "Alunos", path: "/admin/alunos", icon: GraduationCap },
     { label: "Motoristas", path: "/admin/motoristas", icon: Truck },
@@ -49,6 +52,7 @@ export default function AdminDashboard() {
     <DashboardLayout navItems={navItems} title={`Administração · ${adminCity}`}>
       <Routes>
         <Route index element={<AdminOverview adminCity={adminCity} adminState={adminState} />} />
+        <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="parcerias" element={<AdminPartnerships />} />
         <Route path="alunos" element={<AdminStudents adminCity={adminCity} adminState={adminState} />} />
         <Route path="motoristas" element={<AdminDrivers adminCity={adminCity} adminState={adminState} />} />
@@ -59,8 +63,7 @@ export default function AdminDashboard() {
         <Route path="pontos" element={<AdminPickupPoints adminCity={adminCity} adminState={adminState} />} />
         <Route path="documentos" element={<AdminDocuments />} />
         <Route path="push" element={<AdminPush />} />
-        <Route path="analytics" element={<Navigate to="/admin" replace />} />
-        <Route path="bi" element={<Navigate to="/admin" replace />} />
+        <Route path="bi" element={<Navigate to="/admin/analytics" replace />} />
         <Route path="universidades" element={<Navigate to="/admin/universidade" replace />} />
         <Route path="escalas" element={<Navigate to="/admin/horarios" replace />} />
         <Route path="pontos-embarque" element={<Navigate to="/admin/pontos" replace />} />
