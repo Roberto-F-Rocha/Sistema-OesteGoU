@@ -57,7 +57,7 @@ router.get("/admin/analytics/dashboard", auth, requireRole("admin"), cityAccess,
 
 router.get("/routes/available", auth, requireRole("student"), getAvailableRoutes);
 router.get("/students/by-route/:routeId", auth, requireRole("admin", "driver"), cityAccess, getStudentsByRoute);
-router.get("/students/my-trip-passengers", auth, requireRole("driver"), getMyTripPassengers);
+router.get("/students/my-trip-passengers", auth, requireRole("student"), getMyTripPassengers);
 router.get("/driver/routes", auth, requireRole("driver"), cityAccess, getDriverRoutes);
 router.post("/driver/notify-pending-students", auth, requireRole("driver"), cityAccess, notifyDriverPendingStudents);
 
@@ -67,8 +67,8 @@ router.get("/my-reservations", auth, requireRole("student"), getMyReservations);
 router.patch("/reservations/:id/cancel", auth, requireRole("student", "admin"), cancelReservation);
 router.patch("/reservations/:id/confirm", auth, requireRole("student", "admin"), confirmReservation);
 
-router.post("/maintenance-tickets", auth, requireRole("driver", "admin"), createMaintenanceTicket);
-router.get("/maintenance-tickets/my", auth, requireRole("driver", "admin"), getMyMaintenanceTickets);
+router.post("/maintenance-tickets", auth, requireRole("driver"), createMaintenanceTicket);
+router.get("/maintenance-tickets/my", auth, requireRole("driver"), getMyMaintenanceTickets);
 router.get("/maintenance-tickets", auth, requireRole("admin"), cityAccess, listMaintenanceTickets);
 router.patch("/maintenance-tickets/:id", auth, requireRole("admin"), cityAccess, updateMaintenanceTicket);
 
