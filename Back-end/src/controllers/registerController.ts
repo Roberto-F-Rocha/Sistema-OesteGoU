@@ -67,6 +67,7 @@ export async function registerUser(req, res) {
       role: data.role,
       cpf: data.cpf,
       phone: data.phone,
+      birthDate: data.birthDate ? new Date(`${data.birthDate}T12:00:00.000Z`) : undefined,
       institution:
         data.role === "student" ? data.institution : undefined,
       cep: data.cep,
