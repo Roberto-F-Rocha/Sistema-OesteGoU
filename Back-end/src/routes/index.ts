@@ -7,6 +7,7 @@ import { getMyNotifications, markNotificationAsRead, markAllNotificationsAsRead 
 import { subscribePush, unsubscribePush } from "../controllers/pushController";
 import { sendPush, getPushHistory } from "../controllers/adminPushController";
 import { getAnalyticsDashboard } from "../controllers/adminAnalyticsController";
+import { listUniversities, createUniversity, updateUniversity } from "../controllers/universityController";
 import { auth } from "../middlewares/auth";
 import { cityAccess } from "../middlewares/cityAccess";
 import { requireRole } from "../middlewares/permissions";
@@ -17,25 +18,15 @@ import { uploadDocument } from "../controllers/uploadController";
 import { listCityAgreements, createCityAgreement, updateCityAgreementStatus, listCities } from "../controllers/cityAgreementController";
 import { createReservation, createRoundTripReservation, getMyReservations, cancelReservation, confirmReservation } from "../controllers/reservationController";
 import { createMaintenanceTicket, getMyMaintenanceTickets, listMaintenanceTickets, updateMaintenanceTicket } from "../controllers/maintenanceTicketController";
-import { getAdminDashboard, listAdminUsers, updateUserStatus, createDriver, listVehicles, createVehicle, updateVehicle, listSchedules, createSchedule, updateSchedule, listPickupPoints, createPickupPoint, updatePickupPoint, listRoutes, createRoute, updateRoute, listAuditLogs, listUniversities, createUniversity, updateUniversity } from "../controllers/adminController";
+import { getAdminDashboard, listAdminUsers, updateUserStatus, createDriver, listVehicles, createVehicle, updateVehicle, listSchedules, createSchedule, updateSchedule, listPickupPoints, createPickupPoint, updatePickupPoint, listRoutes, createRoute, updateRoute, listAuditLogs } from "../controllers/adminController";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
-const registerUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 2 },
-});
+const registerUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 2 } });
 
 router.post("/auth/login", loginRateLimit, login);
 router.post("/auth/logout", auth, logout);
-router.post(
-  "/auth/register",
-  registerUpload.fields([
-    { name: "photo", maxCount: 1 },
-    { name: "enrollmentProof", maxCount: 1 },
-  ]),
-  registerUser,
-);
+router.post("/auth/register", registerUpload.fields([{ name: "photo", maxCount: 1 }, { name: "enrollmentProof", maxCount: 1 }]), registerUser);
 router.post("/auth/refresh", refresh);
 router.get("/auth/me", auth, me);
 
