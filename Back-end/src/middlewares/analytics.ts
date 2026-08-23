@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
 type MetadataFactory = (req: any, res: any) => Record<string, unknown> | undefined;
@@ -16,7 +17,7 @@ export function trackAnalytics(event: string, metadataFactory?: MetadataFactory)
       const extra = metadataFactory?.(req, res) ?? {};
       const metadata = Object.fromEntries(
         Object.entries({ ...baseMetadata, ...extra }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
-      );
+      ) as Prisma.InputJsonObject;
 
       void prisma.analyticsEvent.create({
         data: {
