@@ -82,23 +82,12 @@ export default function AdminSchedules({ adminCity, adminState }: Props) {
     return true;
   }), [points, form.type, form.universityId]);
 
-  useEffect(() => {
-    setForm((current) => ({
-      ...current,
-      pointIds: current.pointIds.filter((id) => availablePoints.some((point) => point.id === id)),
-    }));
-  }, [form.type, form.universityId]);
-
-  function resetForm() {
-    setForm(emptyForm);
-  }
+  function resetForm() { setForm(emptyForm); }
 
   function togglePoint(id: number) {
     setForm((current) => ({
       ...current,
-      pointIds: current.pointIds.includes(id)
-        ? current.pointIds.filter((pointId) => pointId !== id)
-        : [...current.pointIds, id],
+      pointIds: current.pointIds.includes(id) ? current.pointIds.filter((pointId) => pointId !== id) : [...current.pointIds, id],
     }));
   }
 
@@ -109,49 +98,31 @@ export default function AdminSchedules({ adminCity, adminState }: Props) {
       return;
     }
 
+    const payload = {
+      name: form.name,
+      time: form.time,
+      type: form.type,
+      universityId: form.universityId ? Number(form.universityId) : null,
+      driverId: form.driverId ? Number(form.driverId) : null,
+      vehicleId: form.vehicleId ? Number(form.vehicleId) : null,
+      pointIds: form.pointIds,
+      active: form.active,
+    };
+
     try {
       setSaving(true);
       if (form.id) {
-        const currentRoute = routes.find((route) => route.id === form.id);
-        if (!currentRoute) throw new Error("Rota não encontrada");
-
-        await api.patch(`/admin/schedules/${currentRoute.schedule.id}`, {
-          time: form.time,
-          type: form.type,
-          universityId: form.universityId ? Number(form.universityId) : null,
-          active: form.active,
-        });
-        await api.patch(`/admin/routes/${form.id}`, {
-          name: form.name,
-          scheduleId: currentRoute.schedule.id,
-          driverId: form.driverId ? Number(form.driverId) : null,
-          vehicleId: form.vehicleId ? Number(form.vehicleId) : null,
-          pointIds: form.pointIds,
-          active: form.active,
-        });
-        toast({ title: "Rota atualizada", description: `${form.pointIds.length} ponto(s) vinculados.` });
+        await api.patch(`/admin/routes/${form.id}/complete`, payload);
+        toast({ title: "Rota atualizada", description: `${form.pointIds.length} ponto(s) vinculados. Horário e rota foram salvos juntos.` });
       } else {
-        const schedule = await api.post("/admin/schedules", {
-          time: form.time,
-          type: form.type,
-          universityId: form.universityId ? Number(form.universityId) : undefined,
-        });
-        await api.post("/admin/routes", {
-          name: form.name,
-          scheduleId: schedule.data.id,
-          driverId: form.driverId ? Number(form.driverId) : undefined,
-          vehicleId: form.vehicleId ? Number(form.vehicleId) : undefined,
-          pointIds: form.pointIds,
-          active: form.active,
-        });
-        toast({ title: "Rota criada", description: `${form.pointIds.length} ponto(s) vinculados.` });
+        await api.post("/admin/routes/complete", payload);
+        toast({ title: "Rota criada", description: `${form.pointIds.length} ponto(s) vinculados. Horário e rota foram salvos juntos.` });
       }
-
       setOpen(false);
       resetForm();
       await loadData();
     } catch (error: any) {
-      toast({ title: "Erro ao salvar rota", description: error?.response?.data?.error ?? error?.message ?? "Verifique os campos obrigatórios.", variant: "destructive" });
+      toast({ title: "Erro ao salvar rota", description: error?.response?.data?.error ?? "Verifique os campos obrigatórios.", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -176,12 +147,7 @@ export default function AdminSchedules({ adminCity, adminState }: Props) {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <PageHeader
-        title="Horários e Rotas"
-        description={`Rotas de ${adminCity} / ${adminState}, com motorista, veículo e pontos vinculados.`}
-        icon={Calendar}
-        actions={<Button onClick={() => { resetForm(); setOpen(true); }}><Plus className="w-4 h-4 mr-1.5" /> Nova rota</Button>}
-      />
+      <PageHeader title="Horários e Rotas" description={`Rotas de ${adminCity} / ${adminState}, com motorista, veículo e pontos vinculados.`} icon={Calendar} actions={<Button onClick={() => { resetForm(); setOpen(true); }}><Plus className="w-4 h-4 mr-1.5" /> Nova rota</Button>} />
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Carregando horários...</div> : orderedRoutes.length === 0 ? <div className="p-8 text-center text-sm text-muted-foreground">Nenhuma rota cadastrada ainda.</div> : (
@@ -207,7 +173,7 @@ export default function AdminSchedules({ adminCity, adminState }: Props) {
 
       <Dialog open={open} onOpenChange={(value) => { if (!saving) setOpen(value); }}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{form.id ? "Editar rota" : "Nova rota"}</DialogTitle><DialogDescription>Vincule horário, universidade, motorista, veículo e pontos da rota.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{form.id ? "Editar rota" : "Nova rota"}</DialogTitle><DialogDescription>Salve horário, universidade, motorista, veículo e pontos em uma única operação.</DialogDescription></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2"><Label>Nome da rota</Label><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required /></div>
@@ -226,7 +192,7 @@ export default function AdminSchedules({ adminCity, adminState }: Props) {
                     </label>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">Os pontos selecionados ficam vinculados diretamente à rota e serão oferecidos ao aluno.</p>
+                <p className="text-xs text-muted-foreground">Esses pontos serão oferecidos ao aluno ao montar a semana.</p>
               </div>
               <div className="space-y-2 sm:col-span-2"><Label>Status</Label><select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={String(form.active)} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === "true" }))}><option value="true">Ativa</option><option value="false">Inativa</option></select></div>
             </div>
