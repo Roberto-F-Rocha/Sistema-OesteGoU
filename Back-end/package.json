@@ -10,7 +10,7 @@
     "start": "node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "ts-node-dev --transpile-only prisma/seed.ts",
-    "seed:rn": "ts-node-dev --transpile-only prisma/seed-rn.ts",
+    "seed:rn": "npm run seed:rn:all",
     "seed:rn:cities": "ts-node-dev --transpile-only prisma/seed-rn-cities.ts",
     "seed:rn:institutions": "ts-node-dev --transpile-only prisma/seed-rn-institutions.ts",
     "seed:rn:campuses": "ts-node-dev --transpile-only prisma/seed-rn-campuses.ts",
@@ -45,7 +45,7 @@
     "@types/multer": "^1.4.13",
     "@types/node": "^25.6.0",
     "@types/node-cron": "^3.0.11",
-    "@types/web-push": "^3.6.4",
+    "@types/web-push": "^3.6.7",
     "prisma": "^5.22.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^6.0.3"
