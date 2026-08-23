@@ -11,6 +11,7 @@ import { listUniversities, createUniversity, updateUniversity } from "../control
 import { updateUserStatus } from "../controllers/adminUserController";
 import { listSchedules, createSchedule, updateSchedule, listRoutes, createRoute, updateRoute } from "../controllers/adminTransportController";
 import { createRouteBundle, updateRouteBundle } from "../controllers/adminRouteBundleController";
+import { listPickupPoints, createPickupPoint, updatePickupPoint } from "../controllers/pickupPointController";
 import { auth } from "../middlewares/auth";
 import { cityAccess } from "../middlewares/cityAccess";
 import { requireRole } from "../middlewares/permissions";
@@ -21,7 +22,7 @@ import { uploadDocument } from "../controllers/uploadController";
 import { listCityAgreements, createCityAgreement, updateCityAgreementStatus, listCities } from "../controllers/cityAgreementController";
 import { createReservation, createRoundTripReservation, getMyReservations, cancelReservation, confirmReservation } from "../controllers/reservationController";
 import { createMaintenanceTicket, getMyMaintenanceTickets, listMaintenanceTickets, updateMaintenanceTicket } from "../controllers/maintenanceTicketController";
-import { getAdminDashboard, listAdminUsers, createDriver, listVehicles, createVehicle, updateVehicle, listPickupPoints, createPickupPoint, updatePickupPoint, listAuditLogs } from "../controllers/adminController";
+import { getAdminDashboard, listAdminUsers, createDriver, listVehicles, createVehicle, updateVehicle, listAuditLogs } from "../controllers/adminController";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
