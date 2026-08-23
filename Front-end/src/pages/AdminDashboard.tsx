@@ -11,6 +11,7 @@ import {
   School,
   Truck,
   Link2,
+  Wrench,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,6 +26,7 @@ import AdminDocuments from "./admin/AdminDocuments";
 import AdminPush from "./admin/AdminPush";
 import AdminPartnerships from "./admin/AdminPartnerships";
 import AdminAnalytics from "./admin/AdminAnalytics";
+import AdminMaintenance from "./admin/AdminMaintenance";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -38,6 +40,7 @@ export default function AdminDashboard() {
     { label: "Alunos", path: "/admin/alunos", icon: GraduationCap },
     { label: "Motoristas", path: "/admin/motoristas", icon: Truck },
     { label: "Frota", path: "/admin/frota", icon: Bus },
+    { label: "Manutenção", path: "/admin/manutencao", icon: Wrench },
     { label: "Horários", path: "/admin/horarios", icon: Calendar },
     { label: "Universidades", path: "/admin/universidade", icon: School },
     { label: "Pontos", path: "/admin/pontos", icon: MapPin },
@@ -54,6 +57,7 @@ export default function AdminDashboard() {
         <Route path="alunos" element={<AdminStudents adminCity={adminCity} adminState={adminState} />} />
         <Route path="motoristas" element={<AdminDrivers adminCity={adminCity} adminState={adminState} />} />
         <Route path="frota" element={<AdminFleet adminCity={adminCity} adminState={adminState} />} />
+        <Route path="manutencao" element={<AdminMaintenance />} />
         <Route path="horarios" element={<AdminSchedules adminCity={adminCity} adminState={adminState} />} />
         <Route path="universidade" element={<AdminUniversities adminCity={adminCity} adminState={adminState} />} />
         <Route path="pontos" element={<AdminPickupPoints adminCity={adminCity} adminState={adminState} />} />
