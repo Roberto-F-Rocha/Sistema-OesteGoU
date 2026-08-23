@@ -5,7 +5,7 @@ function allowedCityIds(req): number[] {
   return req.allowedCities ?? (req.user?.cityId ? [req.user.cityId] : []);
 }
 
-function parseOptionalId(value: unknown) {
+function parseOptionalId(value: unknown): number | null {
   if (value === undefined || value === null || value === "") return null;
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
@@ -19,6 +19,16 @@ function validTime(value: unknown) {
   return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
+function parsePointIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const parsed: number[] = [];
+  for (const item of value) {
+    const id = parseOptionalId(item);
+    if (id !== null && !parsed.includes(id)) parsed.push(id);
+  }
+  return parsed;
+}
+
 async function validateBundle(req, existingRouteId?: number) {
   const cityIds = allowedCityIds(req);
   const cityId = parseOptionalId(req.body?.cityId) ?? req.user.cityId;
@@ -28,9 +38,7 @@ async function validateBundle(req, existingRouteId?: number) {
   const type = normalizeType(req.body?.type);
   const time = req.body?.time;
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-  const pointIds = Array.isArray(req.body?.pointIds)
-    ? Array.from(new Set(req.body.pointIds.map(parseOptionalId).filter((id): id is number => Boolean(id))))
-    : [];
+  const pointIds = parsePointIds(req.body?.pointIds);
 
   if (!cityId || !cityIds.includes(cityId)) throw new Error("Cidade não permitida");
   if (!name) throw new Error("Nome da rota é obrigatório");
