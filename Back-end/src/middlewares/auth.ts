@@ -39,6 +39,7 @@ export async function auth(req, res, next) {
     req.user = {
       id: user.id,
       name: user.nome,
+      nome: user.nome,
       email: user.email,
       role: user.role,
       status: user.status,
