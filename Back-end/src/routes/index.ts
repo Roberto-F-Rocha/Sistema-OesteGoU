@@ -9,6 +9,7 @@ import { sendPush, getPushHistory } from "../controllers/adminPushController";
 import { getAnalyticsDashboard } from "../controllers/adminAnalyticsController";
 import { listUniversities, createUniversity, updateUniversity } from "../controllers/universityController";
 import { updateUserStatus } from "../controllers/adminUserController";
+import { listSchedules, createSchedule, updateSchedule, listRoutes, createRoute, updateRoute } from "../controllers/adminTransportController";
 import { auth } from "../middlewares/auth";
 import { cityAccess } from "../middlewares/cityAccess";
 import { requireRole } from "../middlewares/permissions";
@@ -19,7 +20,7 @@ import { uploadDocument } from "../controllers/uploadController";
 import { listCityAgreements, createCityAgreement, updateCityAgreementStatus, listCities } from "../controllers/cityAgreementController";
 import { createReservation, createRoundTripReservation, getMyReservations, cancelReservation, confirmReservation } from "../controllers/reservationController";
 import { createMaintenanceTicket, getMyMaintenanceTickets, listMaintenanceTickets, updateMaintenanceTicket } from "../controllers/maintenanceTicketController";
-import { getAdminDashboard, listAdminUsers, createDriver, listVehicles, createVehicle, updateVehicle, listSchedules, createSchedule, updateSchedule, listPickupPoints, createPickupPoint, updatePickupPoint, listRoutes, createRoute, updateRoute, listAuditLogs } from "../controllers/adminController";
+import { getAdminDashboard, listAdminUsers, createDriver, listVehicles, createVehicle, updateVehicle, listPickupPoints, createPickupPoint, updatePickupPoint, listAuditLogs } from "../controllers/adminController";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -85,7 +86,7 @@ router.post("/admin/routes", auth, requireRole("admin"), cityAccess, createRoute
 router.patch("/admin/routes/:id", auth, requireRole("admin"), cityAccess, updateRoute);
 router.get("/admin/audit-logs", auth, requireRole("admin"), cityAccess, listAuditLogs);
 
-router.get("/cities", auth, listCities);
+router.get("/cities", auth, requireRole("admin"), listCities);
 router.get("/cities/agreements", auth, requireRole("admin"), listCityAgreements);
 router.post("/cities/agreements", auth, requireRole("admin"), createCityAgreement);
 router.patch("/cities/agreements/:id", auth, requireRole("admin"), updateCityAgreementStatus);
