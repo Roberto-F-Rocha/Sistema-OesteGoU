@@ -10,6 +10,7 @@ import { getAnalyticsDashboard } from "../controllers/adminAnalyticsController";
 import { listUniversities, createUniversity, updateUniversity } from "../controllers/universityController";
 import { updateUserStatus } from "../controllers/adminUserController";
 import { listSchedules, createSchedule, updateSchedule, listRoutes, createRoute, updateRoute } from "../controllers/adminTransportController";
+import { createRouteBundle, updateRouteBundle } from "../controllers/adminRouteBundleController";
 import { auth } from "../middlewares/auth";
 import { cityAccess } from "../middlewares/cityAccess";
 import { requireRole } from "../middlewares/permissions";
@@ -82,6 +83,8 @@ router.get("/admin/pickup-points", auth, requireRole("admin"), cityAccess, listP
 router.post("/admin/pickup-points", auth, requireRole("admin"), cityAccess, createPickupPoint);
 router.patch("/admin/pickup-points/:id", auth, requireRole("admin"), cityAccess, updatePickupPoint);
 router.get("/admin/routes", auth, requireRole("admin"), cityAccess, listRoutes);
+router.post("/admin/routes/complete", auth, requireRole("admin"), cityAccess, createRouteBundle);
+router.patch("/admin/routes/:id/complete", auth, requireRole("admin"), cityAccess, updateRouteBundle);
 router.post("/admin/routes", auth, requireRole("admin"), cityAccess, createRoute);
 router.patch("/admin/routes/:id", auth, requireRole("admin"), cityAccess, updateRoute);
 router.get("/admin/audit-logs", auth, requireRole("admin"), cityAccess, listAuditLogs);
