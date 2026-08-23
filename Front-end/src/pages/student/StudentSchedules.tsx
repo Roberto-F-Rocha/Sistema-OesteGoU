@@ -1,23 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  ArrowLeftRight,
-  Calendar,
-  Clock,
-  MapPin,
-  Plus,
-  School,
-  Trash2,
-  User,
-  X,
-} from "lucide-react";
+import { ArrowLeftRight, Calendar, Clock, MapPin, Plus, School, Trash2, User, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
 interface PickupPoint {
   id: number;
@@ -26,10 +15,6 @@ interface PickupPoint {
   type?: "ida" | "volta";
   active?: boolean;
   universityId?: number | null;
-}
-
-interface RoutePoint {
-  pickupPoint?: PickupPoint | null;
 }
 
 interface RouteItem {
@@ -45,13 +30,13 @@ interface RouteItem {
   city?: { name: string; state: string } | null;
   driver?: { nome: string } | null;
   vehicle?: { name?: string | null; plate: string; capacity?: number | null } | null;
-  points?: RoutePoint[];
-  reservations?: { id: number }[];
+  points?: { pickupPoint?: PickupPoint | null }[];
 }
 
+type ReservationStatus = "pending" | "confirmed" | "canceled" | "absent";
 interface Reservation {
   id: number;
-  status: "confirmed" | "canceled" | "absent";
+  status: ReservationStatus;
   routeId: number;
   scheduleId: number;
   pickupPointId?: number | null;
@@ -62,32 +47,25 @@ interface Reservation {
 }
 
 type ShiftKey = "manha" | "tarde" | "noite";
-
 const DAYS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-
-const SHIFTS: Array<{ key: ShiftKey; label: string; startHour: number; endHour: number }> = [
-  { key: "manha", label: "Manhã", startHour: 0, endHour: 11 },
-  { key: "tarde", label: "Tarde", startHour: 12, endHour: 17 },
-  { key: "noite", label: "Noite", startHour: 18, endHour: 23 },
+const SHIFTS: Array<{ key: ShiftKey; label: string }> = [
+  { key: "manha", label: "Manhã" },
+  { key: "tarde", label: "Tarde" },
+  { key: "noite", label: "Noite" },
 ];
 
-function tripLabel(type?: string) {
-  return type === "volta" ? "Volta" : "Ida";
-}
-
-function routePoints(route?: RouteItem | null, type?: "ida" | "volta") {
-  return (route?.points ?? [])
-    .map((item) => item.pickupPoint)
-    .filter((point): point is PickupPoint => Boolean(point && point.active !== false))
-    .filter((point) => !type || !point.type || point.type === type);
-}
+const emptyForm = {
+  university: "",
+  dayOfWeek: "Segunda",
+  shift: "" as ShiftKey | "",
+  goingRouteId: "",
+  returnRouteId: "",
+  goingPickupPointId: "",
+  returnPickupPointId: "",
+};
 
 function universityName(route: RouteItem) {
   return route.schedule?.university?.name ?? route.name;
-}
-
-function reservationUniversity(reservation: Reservation) {
-  return reservation.schedule?.university?.name ?? reservation.route?.name ?? "Universidade não informada";
 }
 
 function getHour(time?: string) {
@@ -102,26 +80,23 @@ function shiftFromTime(time?: string): ShiftKey {
   return "manha";
 }
 
-function routeBelongsToShift(route: RouteItem, shift: ShiftKey) {
-  return shiftFromTime(route.schedule?.time) === shift;
+function routePoints(route?: RouteItem | null, type?: "ida" | "volta") {
+  return (route?.points ?? [])
+    .map((item) => item.pickupPoint)
+    .filter((point): point is PickupPoint => Boolean(point && point.active !== false))
+    .filter((point) => !type || !point.type || point.type === type);
 }
 
-function displayRoutePath(route?: RouteItem | null, fallbackUniversity = "Universidade") {
-  if (!route) return "Rota não encontrada";
-  const university = route.schedule?.university?.name ?? fallbackUniversity;
-  const city = route.city?.name ?? "Cidade";
-  return route.schedule?.type === "volta" ? `${university} → ${city}` : `${city} → ${university}`;
+function autoPointId(points: PickupPoint[]) {
+  return points.length === 1 ? String(points[0].id) : "";
 }
 
-const emptyForm = {
-  university: "",
-  dayOfWeek: "Segunda",
-  shift: "" as ShiftKey | "",
-  goingRouteId: "",
-  returnRouteId: "",
-  goingPickupPointId: "",
-  returnPickupPointId: "",
-};
+function statusMeta(status: ReservationStatus) {
+  if (status === "confirmed") return { label: "Confirmado", className: "border-emerald-500/30 text-emerald-600 dark:text-emerald-400" };
+  if (status === "pending") return { label: "Aguardando confirmação", className: "border-amber-500/30 text-amber-700 dark:text-amber-300" };
+  if (status === "canceled") return { label: "Não vou", className: "border-destructive/30 text-destructive" };
+  return { label: "Ausente", className: "border-destructive/30 text-destructive" };
+}
 
 export default function StudentSchedules() {
   const { toast } = useToast();
@@ -137,148 +112,82 @@ export default function StudentSchedules() {
   async function loadData(showLoading = false) {
     try {
       if (showLoading) setLoading(true);
-      const [routesRes, reservationsRes] = await Promise.all([
+      const [routesResponse, reservationsResponse] = await Promise.all([
         api.get("/routes/available"),
         api.get("/my-reservations"),
       ]);
-
-      const availableRoutes: RouteItem[] = routesRes.data ?? [];
-      setRoutes(availableRoutes.filter((route) => route.active));
-      setReservations(reservationsRes.data ?? []);
+      setRoutes((routesResponse.data ?? []).filter((route: RouteItem) => route.active));
+      setReservations(reservationsResponse.data ?? []);
     } catch {
-      toast({
-        title: "Erro ao carregar horários",
-        description: "Não foi possível buscar as rotas disponíveis.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro ao carregar horários", description: "Não foi possível buscar as rotas disponíveis.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    loadData(true);
-  }, []);
-
+  useEffect(() => { loadData(true); }, []);
   useLiveRefresh(() => loadData(false), { intervalMs: 10000 });
 
-  const activeReservations = useMemo(
-    () => reservations.filter((reservation) => reservation.status === "confirmed"),
+  const scheduledReservations = useMemo(
+    () => reservations.filter((reservation) => reservation.status === "pending" || reservation.status === "confirmed"),
     [reservations],
   );
 
   const weeklyReservations = useMemo(() => {
     const grouped: Record<string, Reservation[]> = Object.fromEntries(DAYS.map((day) => [day, []]));
-
-    activeReservations.forEach((reservation) => {
+    scheduledReservations.forEach((reservation) => {
       const day = reservation.dayOfWeek || "Sem dia";
       if (!grouped[day]) grouped[day] = [];
       grouped[day].push(reservation);
     });
-
-    Object.values(grouped).forEach((items) => {
-      items.sort((a, b) => (a.schedule?.time ?? "").localeCompare(b.schedule?.time ?? ""));
-    });
-
+    Object.values(grouped).forEach((items) => items.sort((a, b) => (a.schedule?.time ?? "").localeCompare(b.schedule?.time ?? "")));
     return grouped;
-  }, [activeReservations]);
+  }, [scheduledReservations]);
 
-  const universities = useMemo(() => {
-    return Array.from(new Set(routes.map(universityName))).sort((a, b) => a.localeCompare(b));
-  }, [routes]);
+  const universities = useMemo(
+    () => Array.from(new Set(routes.map(universityName))).sort((a, b) => a.localeCompare(b)),
+    [routes],
+  );
 
-  const counts = useMemo(() => ({
-    total: routes.length,
-    ida: routes.filter((route) => route.schedule?.type === "ida").length,
-    volta: routes.filter((route) => route.schedule?.type === "volta").length,
-    confirmed: activeReservations.length,
-  }), [routes, activeReservations]);
-
-  const universityRoutes = useMemo(() => {
-    return routes.filter((route) => universityName(route) === form.university);
-  }, [routes, form.university]);
+  const universityRoutes = useMemo(
+    () => routes.filter((route) => universityName(route) === form.university),
+    [routes, form.university],
+  );
 
   const availableShifts = useMemo(() => {
     if (!form.university) return [];
     return SHIFTS.filter((shift) =>
-      universityRoutes.some((route) => route.schedule?.type === "ida" && routeBelongsToShift(route, shift.key)) &&
-      universityRoutes.some((route) => route.schedule?.type === "volta" && routeBelongsToShift(route, shift.key)),
+      universityRoutes.some((route) => route.schedule?.type === "ida" && shiftFromTime(route.schedule?.time) === shift.key) &&
+      universityRoutes.some((route) => route.schedule?.type === "volta" && shiftFromTime(route.schedule?.time) === shift.key),
     );
   }, [form.university, universityRoutes]);
 
-  const goingRoutesForShift = useMemo(() => {
-    if (!form.shift) return [];
-    return universityRoutes.filter(
-      (route) => route.schedule?.type === "ida" && routeBelongsToShift(route, form.shift as ShiftKey),
-    );
-  }, [universityRoutes, form.shift]);
+  const goingRoutes = useMemo(() => !form.shift ? [] : universityRoutes.filter(
+    (route) => route.schedule?.type === "ida" && shiftFromTime(route.schedule?.time) === form.shift,
+  ), [universityRoutes, form.shift]);
 
-  const returnRoutesForShift = useMemo(() => {
-    if (!form.shift) return [];
-    return universityRoutes.filter(
-      (route) => route.schedule?.type === "volta" && routeBelongsToShift(route, form.shift as ShiftKey),
-    );
-  }, [universityRoutes, form.shift]);
+  const returnRoutes = useMemo(() => !form.shift ? [] : universityRoutes.filter(
+    (route) => route.schedule?.type === "volta" && shiftFromTime(route.schedule?.time) === form.shift,
+  ), [universityRoutes, form.shift]);
 
-  const goingRoute = useMemo(() => {
-    return goingRoutesForShift.find((route) => String(route.id) === form.goingRouteId) ?? goingRoutesForShift[0] ?? null;
-  }, [goingRoutesForShift, form.goingRouteId]);
-
-  const returnRoute = useMemo(() => {
-    return returnRoutesForShift.find((route) => String(route.id) === form.returnRouteId) ?? returnRoutesForShift[0] ?? null;
-  }, [returnRoutesForShift, form.returnRouteId]);
-
+  const goingRoute = goingRoutes.find((route) => String(route.id) === form.goingRouteId) ?? goingRoutes[0] ?? null;
+  const returnRoute = returnRoutes.find((route) => String(route.id) === form.returnRouteId) ?? returnRoutes[0] ?? null;
   const goingPoints = routePoints(goingRoute, "ida");
   const returnPoints = routePoints(returnRoute, "volta");
 
-  const canSave =
-    !!goingRoute?.schedule?.id &&
-    !!returnRoute?.schedule?.id &&
-    (goingPoints.length <= 1 || !!form.goingPickupPointId) &&
-    (returnPoints.length <= 1 || !!form.returnPickupPointId);
+  const canSave = Boolean(
+    form.shift && goingRoute?.schedule?.id && returnRoute?.schedule?.id &&
+    (goingPoints.length <= 1 || form.goingPickupPointId) &&
+    (returnPoints.length <= 1 || form.returnPickupPointId),
+  );
 
-  function autoPointId(points: PickupPoint[]) {
-    return points.length === 1 ? String(points[0].id) : "";
+  function selectUniversity(value: string) {
+    setForm((current) => ({ ...current, university: value, shift: "", goingRouteId: "", returnRouteId: "", goingPickupPointId: "", returnPickupPointId: "" }));
   }
 
-  function openCreate(route?: RouteItem) {
-    if (route) {
-      const university = universityName(route);
-      const shift = shiftFromTime(route.schedule?.time);
-      const routesFromUniversity = routes.filter((item) => universityName(item) === university);
-      const going = routesFromUniversity.find((item) => item.schedule?.type === "ida" && routeBelongsToShift(item, shift));
-      const returning = routesFromUniversity.find((item) => item.schedule?.type === "volta" && routeBelongsToShift(item, shift));
-      setForm({
-        university,
-        dayOfWeek: selectedWeekDay,
-        shift,
-        goingRouteId: going ? String(going.id) : "",
-        returnRouteId: returning ? String(returning.id) : "",
-        goingPickupPointId: autoPointId(routePoints(going, "ida")),
-        returnPickupPointId: autoPointId(routePoints(returning, "volta")),
-      });
-    } else {
-      setForm({ ...emptyForm, dayOfWeek: selectedWeekDay });
-    }
-    setCreateOpen(true);
-  }
-
-  function handleUniversityChange(value: string) {
-    setForm((current) => ({
-      ...current,
-      university: value,
-      shift: "",
-      goingRouteId: "",
-      returnRouteId: "",
-      goingPickupPointId: "",
-      returnPickupPointId: "",
-    }));
-  }
-
-  function handleShiftChange(shift: ShiftKey) {
-    const routesFromUniversity = routes.filter((route) => universityName(route) === form.university);
-    const going = routesFromUniversity.find((route) => route.schedule?.type === "ida" && routeBelongsToShift(route, shift));
-    const returning = routesFromUniversity.find((route) => route.schedule?.type === "volta" && routeBelongsToShift(route, shift));
+  function selectShift(shift: ShiftKey) {
+    const going = universityRoutes.find((route) => route.schedule?.type === "ida" && shiftFromTime(route.schedule?.time) === shift);
+    const returning = universityRoutes.find((route) => route.schedule?.type === "volta" && shiftFromTime(route.schedule?.time) === shift);
     setForm((current) => ({
       ...current,
       shift,
@@ -289,344 +198,133 @@ export default function StudentSchedules() {
     }));
   }
 
-  function handleGoingRouteChange(routeId: string) {
-    const route = routes.find((item) => String(item.id) === routeId);
-    setForm((current) => ({
-      ...current,
-      goingRouteId: routeId,
-      goingPickupPointId: autoPointId(routePoints(route, "ida")),
-    }));
-  }
-
-  function handleReturnRouteChange(routeId: string) {
-    const route = routes.find((item) => String(item.id) === routeId);
-    setForm((current) => ({
-      ...current,
-      returnRouteId: routeId,
-      returnPickupPointId: autoPointId(routePoints(route, "volta")),
-    }));
-  }
-
-  async function createReservation(route: RouteItem, pickupPointId: string) {
-    await api.post("/reservations", {
-      scheduleId: route.schedule?.id,
-      routeId: route.id,
-      pickupPointId: pickupPointId ? Number(pickupPointId) : undefined,
-      dayOfWeek: form.dayOfWeek,
-    });
-  }
-
   async function handleSave() {
-    if (!goingRoute?.schedule?.id || !returnRoute?.schedule?.id) {
-      toast({
-        title: "Rotas obrigatórias",
-        description: "Selecione uma universidade e um turno que possuam ida e volta cadastradas.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const goingPickupPointId = form.goingPickupPointId || autoPointId(goingPoints);
-    const returnPickupPointId = form.returnPickupPointId || autoPointId(returnPoints);
-
-    if (goingPoints.length > 1 && !goingPickupPointId) {
-      toast({ title: "Selecione o ponto de ida", variant: "destructive" });
-      return;
-    }
-
-    if (returnPoints.length > 1 && !returnPickupPointId) {
-      toast({ title: "Selecione o ponto de volta", variant: "destructive" });
-      return;
-    }
+    if (!goingRoute?.schedule?.id || !returnRoute?.schedule?.id || !form.shift) return;
+    const goingPointId = form.goingPickupPointId || autoPointId(goingPoints);
+    const returnPointId = form.returnPickupPointId || autoPointId(returnPoints);
 
     try {
       setSaving(true);
       await api.post("/reservations/roundtrip", {
         dayOfWeek: form.dayOfWeek,
         shift: form.shift,
-        going: {
-          scheduleId: goingRoute.schedule.id,
-          routeId: goingRoute.id,
-          pickupPointId: goingPickupPointId || undefined,
-        },
-        returning: {
-          scheduleId: returnRoute.schedule.id,
-          routeId: returnRoute.id,
-          pickupPointId: returnPickupPointId || undefined,
-        },
+        going: { scheduleId: goingRoute.schedule.id, routeId: goingRoute.id, pickupPointId: goingPointId ? Number(goingPointId) : undefined },
+        returning: { scheduleId: returnRoute.schedule.id, routeId: returnRoute.id, pickupPointId: returnPointId ? Number(returnPointId) : undefined },
       });
-
-      toast({ title: "Horário salvo", description: `${form.dayOfWeek} adicionado com ida e volta.` });
+      toast({ title: "Horário salvo", description: `${form.dayOfWeek} foi adicionado. Confirme sua presença antes de cada viagem.` });
       setCreateOpen(false);
       setForm(emptyForm);
       await loadData(false);
     } catch (error: any) {
-      toast({
-        title: "Erro ao salvar",
-        description: error?.response?.data?.error ?? "Não foi possível salvar este horário.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro ao salvar", description: error?.response?.data?.error ?? "Não foi possível salvar este horário.", variant: "destructive" });
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleRemove(reservationId: number) {
+  async function handleRemove(id: number) {
     try {
-      setRemovingId(reservationId);
-      await api.patch(`/reservations/${reservationId}/cancel`);
-      toast({ title: "Horário removido", description: "O horário foi removido da sua semana." });
+      setRemovingId(id);
+      await api.patch(`/reservations/${id}/cancel`);
+      toast({ title: "Horário removido" });
       await loadData(false);
-    } catch {
-      toast({ title: "Erro ao remover", description: "Não foi possível remover este horário.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Erro ao remover", description: error?.response?.data?.error ?? "Não foi possível remover este horário.", variant: "destructive" });
     } finally {
       setRemovingId(null);
     }
   }
 
+  const counts = {
+    routes: routes.length,
+    going: routes.filter((route) => route.schedule?.type === "ida").length,
+    returning: routes.filter((route) => route.schedule?.type === "volta").length,
+    scheduled: scheduledReservations.length,
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground flex items-center gap-2">
-            <Clock className="w-6 h-6 text-primary" /> Horários
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Monte sua semana escolhendo universidade, dia, turno e pontos cadastrados pelo administrador.
-          </p>
+          <h1 className="text-2xl font-heading font-bold text-foreground flex items-center gap-2"><Clock className="w-6 h-6 text-primary" /> Horários</h1>
+          <p className="text-muted-foreground text-sm">Monte sua semana e acompanhe os horários ainda pendentes de confirmação.</p>
         </div>
-        <Button onClick={() => openCreate()} className="gap-2">
-          <Plus className="w-4 h-4" /> Novo horário
-        </Button>
+        <Button onClick={() => { setForm({ ...emptyForm, dayOfWeek: selectedWeekDay }); setCreateOpen(true); }}><Plus className="w-4 h-4 mr-2" /> Novo horário</Button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard label="Rotas" value={counts.total} />
-        <SummaryCard label="Ida" value={counts.ida} tone="primary" />
-        <SummaryCard label="Volta" value={counts.volta} tone="accent" />
-        <SummaryCard label="Na semana" value={counts.confirmed} tone="success" />
+        <Summary label="Rotas" value={counts.routes} />
+        <Summary label="Ida" value={counts.going} />
+        <Summary label="Volta" value={counts.returning} />
+        <Summary label="Na semana" value={counts.scheduled} />
       </div>
 
       <section className="bg-card border border-border rounded-xl p-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-heading font-semibold text-foreground flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-primary" /> Minha semana
-            </h2>
-            <p className="text-sm text-muted-foreground">Seus horários salvos por dia.</p>
-          </div>
+        <div>
+          <h2 className="font-heading font-semibold text-foreground flex items-center gap-2"><Calendar className="w-5 h-5 text-primary" /> Minha semana</h2>
+          <p className="text-sm text-muted-foreground">Pendentes e confirmados permanecem visíveis na agenda.</p>
         </div>
-
         <div className="flex flex-wrap gap-1.5">
-          {DAYS.map((day) => (
-            <button
-              key={day}
-              type="button"
-              onClick={() => setSelectedWeekDay(day)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors border",
-                selectedWeekDay === day
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-primary/40",
-              )}
-            >
-              {day.slice(0, 3)}
-            </button>
-          ))}
+          {DAYS.map((day) => <button key={day} type="button" onClick={() => setSelectedWeekDay(day)} className={cn("px-3 py-1.5 rounded-md text-xs font-medium border", selectedWeekDay === day ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border")}>{day.slice(0, 3)}</button>)}
         </div>
 
-        {activeReservations.length === 0 ? (
+        {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Carregando horários...</div> : (weeklyReservations[selectedWeekDay]?.length ?? 0) === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <Calendar className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-            <p className="font-heading font-semibold text-foreground">Nenhum horário na semana</p>
-            <p className="text-sm text-muted-foreground mt-1">Clique em “Novo horário” para montar sua rotina.</p>
+            <p className="font-heading font-semibold">Nenhum horário em {selectedWeekDay}</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setForm({ ...emptyForm, dayOfWeek: selectedWeekDay }); setCreateOpen(true); }}>Adicionar horário</Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <div className="rounded-xl border border-border bg-background/40 p-3 space-y-2 min-h-[120px]">
-              <div className="flex items-center justify-between">
-                <p className="font-heading font-semibold text-foreground">{selectedWeekDay}</p>
-                <Badge variant="secondary">{weeklyReservations[selectedWeekDay]?.length ?? 0}</Badge>
-              </div>
-              {(weeklyReservations[selectedWeekDay]?.length ?? 0) === 0 ? (
-                <p className="text-xs text-muted-foreground pt-2">Nenhum horário cadastrado.</p>
-              ) : (
-                <div className="space-y-2">
-                  {weeklyReservations[selectedWeekDay].map((reservation) => (
-                    <motion.div
-                      key={reservation.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="rounded-lg border border-border bg-card p-3 space-y-2"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{reservationUniversity(reservation)}</p>
-                          <p className="text-xs text-muted-foreground truncate">{reservation.route?.name ?? "Rota não informada"}</p>
-                        </div>
-                        <Badge variant="outline" className={cn("shrink-0", reservation.schedule?.type === "volta" ? "text-accent" : "text-primary")}>
-                          {tripLabel(reservation.schedule?.type)}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {reservation.schedule?.time ?? "--:--"}</p>
-                        <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {reservation.pickupPoint?.name ?? "Ponto definido pela administração"}</p>
-                        <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {reservation.route?.driver?.nome ?? "Motorista a definir"}</p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="w-full justify-center text-destructive hover:text-destructive"
-                        onClick={() => handleRemove(reservation.id)}
-                        disabled={removingId === reservation.id}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" /> {removingId === reservation.id ? "Removendo..." : "Remover"}
-                      </Button>
-                    </motion.div>
-                  ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {weeklyReservations[selectedWeekDay].map((reservation) => {
+              const status = statusMeta(reservation.status);
+              return (
+                <div key={reservation.id} className="rounded-xl border border-border bg-background/40 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate">{reservation.schedule?.university?.name ?? reservation.route?.name ?? "Viagem"}</p>
+                      <p className="text-xs text-muted-foreground">{reservation.route?.name ?? "Rota não informada"}</p>
+                    </div>
+                    <Badge variant="outline" className={status.className}>{status.label}</Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p className="flex items-center gap-2"><Clock className="w-4 h-4" /> {reservation.schedule?.time ?? "--:--"} · {reservation.schedule?.type === "volta" ? "Volta" : "Ida"}</p>
+                    <p className="flex items-center gap-2"><MapPin className="w-4 h-4" /> {reservation.pickupPoint?.name ?? "Ponto definido pela administração"}</p>
+                    <p className="flex items-center gap-2"><User className="w-4 h-4" /> {reservation.route?.driver?.nome ?? "Motorista a definir"}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="w-full text-destructive hover:text-destructive" onClick={() => handleRemove(reservation.id)} disabled={removingId === reservation.id}><Trash2 className="w-4 h-4 mr-2" />{removingId === reservation.id ? "Removendo..." : "Remover"}</Button>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
         )}
       </section>
 
       {createOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-xl shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="font-heading font-bold text-xl text-foreground flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-primary" /> Novo horário
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Escolha universidade, dia, turno e ponto para montar sua semana.
-                </p>
-              </div>
-              <button onClick={() => setCreateOpen(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
-              </button>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between gap-4">
+              <div><h2 className="text-xl font-heading font-bold flex items-center gap-2"><Clock className="w-5 h-5 text-primary" /> Novo horário</h2><p className="text-sm text-muted-foreground">Escolha ida e volta do mesmo turno.</p></div>
+              <button type="button" onClick={() => setCreateOpen(false)}><X className="w-5 h-5" /></button>
             </div>
 
             <div className="space-y-4 mt-5">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5"><School className="w-4 h-4 text-primary" /> Universidade</Label>
-                <select value={form.university} onChange={(event) => handleUniversityChange(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  <option value="">Selecione uma universidade...</option>
-                  {universities.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
-              </div>
+              <div className="space-y-2"><Label><School className="w-4 h-4 inline mr-1" />Universidade</Label><select value={form.university} onChange={(event) => selectUniversity(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{universities.map((name) => <option key={name}>{name}</option>)}</select></div>
+              <div className="space-y-2"><Label>Dia</Label><div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">{DAYS.map((day) => <button key={day} type="button" onClick={() => setForm((current) => ({ ...current, dayOfWeek: day }))} className={cn("p-2 rounded-md border text-xs", form.dayOfWeek === day ? "bg-primary text-primary-foreground" : "bg-background")}>{day.slice(0, 3)}</button>)}</div></div>
+              <div className="space-y-2"><Label>Turno</Label><div className="grid grid-cols-3 gap-2">{SHIFTS.map((shift) => { const enabled = availableShifts.some((item) => item.key === shift.key); return <button key={shift.key} type="button" disabled={!enabled} onClick={() => selectShift(shift.key)} className={cn("p-3 rounded-lg border text-sm font-medium", form.shift === shift.key && "border-primary bg-primary/10 text-primary", !enabled && "opacity-40")}>{shift.label}</button>; })}</div></div>
 
-              <div className="space-y-2">
-                <Label>Dia da semana</Label>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-                  {DAYS.map((day) => (
-                    <button key={day} type="button" onClick={() => setForm((current) => ({ ...current, dayOfWeek: day }))} className={cn("px-2 py-2 text-xs font-medium rounded-md border transition-colors", form.dayOfWeek === day ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-primary/40")}>{day.slice(0, 3)}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Turno</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {SHIFTS.map((shift) => {
-                    const enabled = availableShifts.some((item) => item.key === shift.key);
-                    const selected = form.shift === shift.key;
-                    return (
-                      <button
-                        key={shift.key}
-                        type="button"
-                        disabled={!enabled}
-                        onClick={() => enabled && handleShiftChange(shift.key)}
-                        className={cn(
-                          "rounded-lg border p-3 text-left transition-all",
-                          selected ? "bg-primary/10 border-primary ring-2 ring-primary/20" : "bg-background border-border hover:border-primary/40",
-                          !enabled && "opacity-50 cursor-not-allowed hover:border-border",
-                        )}
-                      >
-                        <p className={cn("font-heading font-semibold text-sm", selected ? "text-primary" : "text-foreground")}>{shift.label}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{enabled ? "Ida e volta disponíveis" : "Sem rota completa"}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {!form.university ? (
-                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground text-center">
-                  Selecione uma universidade para carregar os turnos disponíveis.
-                </div>
-              ) : !form.shift ? (
-                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground text-center">
-                  Selecione um turno para visualizar ida, volta e pontos.
-                </div>
-              ) : !goingRoute || !returnRoute ? (
-                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground text-center">
-                  É necessário existir uma rota de ida e uma rota de volta para essa universidade e turno.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {(goingRoutesForShift.length > 1 || returnRoutesForShift.length > 1) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {goingRoutesForShift.length > 1 && (
-                        <div className="space-y-2">
-                          <Label>Rota de ida</Label>
-                          <select value={String(goingRoute.id)} onChange={(event) => handleGoingRouteChange(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                            {goingRoutesForShift.map((route) => <option key={route.id} value={route.id}>{route.name} · {route.schedule?.time ?? "--:--"}</option>)}
-                          </select>
-                        </div>
-                      )}
-                      {returnRoutesForShift.length > 1 && (
-                        <div className="space-y-2">
-                          <Label>Rota de volta</Label>
-                          <select value={String(returnRoute.id)} onChange={(event) => handleReturnRouteChange(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                            {returnRoutesForShift.map((route) => <option key={route.id} value={route.id}>{route.name} · {route.schedule?.time ?? "--:--"}</option>)}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <RouteInfoCard title="Ida" route={goingRoute} university={form.university} />
-                    <RouteInfoCard title="Volta" route={returnRoute} university={form.university} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Ponto de ida</Label>
-                    {goingPoints.length > 1 ? (
-                      <select value={form.goingPickupPointId} onChange={(event) => setForm((current) => ({ ...current, goingPickupPointId: event.target.value }))} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option value="">Selecione o ponto de ida...</option>
-                        {goingPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
-                      </select>
-                    ) : (
-                      <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-primary" /> {goingPoints[0]?.name ?? "Ponto definido pela administração"}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Ponto de volta</Label>
-                    {returnPoints.length > 1 ? (
-                      <select value={form.returnPickupPointId} onChange={(event) => setForm((current) => ({ ...current, returnPickupPointId: event.target.value }))} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                        <option value="">Selecione o ponto de volta...</option>
-                        {returnPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
-                      </select>
-                    ) : (
-                      <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-accent" /> {returnPoints[0]?.name ?? "Ponto definido pela administração"}
-                      </div>
-                    )}
-                  </div>
+              {form.shift && goingRoute && returnRoute && (
+                <div className="space-y-4">
+                  <div className="grid sm:grid-cols-2 gap-3"><RouteCard title="Ida" route={goingRoute} /><RouteCard title="Volta" route={returnRoute} /></div>
+                  {goingRoutes.length > 1 && <SelectRoute label="Rota de ida" routes={goingRoutes} value={String(goingRoute.id)} onChange={(id) => { const route = goingRoutes.find((item) => String(item.id) === id); setForm((current) => ({ ...current, goingRouteId: id, goingPickupPointId: autoPointId(routePoints(route, "ida")) })); }} />}
+                  {returnRoutes.length > 1 && <SelectRoute label="Rota de volta" routes={returnRoutes} value={String(returnRoute.id)} onChange={(id) => { const route = returnRoutes.find((item) => String(item.id) === id); setForm((current) => ({ ...current, returnRouteId: id, returnPickupPointId: autoPointId(routePoints(route, "volta")) })); }} />}
+                  <PointSelect label="Ponto de ida" points={goingPoints} value={form.goingPickupPointId} onChange={(value) => setForm((current) => ({ ...current, goingPickupPointId: value }))} />
+                  <PointSelect label="Ponto de volta" points={returnPoints} value={form.returnPickupPointId} onChange={(value) => setForm((current) => ({ ...current, returnPickupPointId: value }))} />
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end gap-2 mt-6">
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={!canSave || saving}>{saving ? "Salvando..." : "Salvar horário"}</Button>
-            </div>
+            <div className="flex justify-end gap-2 mt-6"><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button onClick={handleSave} disabled={!canSave || saving}>{saving ? "Salvando..." : "Salvar horário"}</Button></div>
           </div>
         </div>
       )}
@@ -634,43 +332,18 @@ export default function StudentSchedules() {
   );
 }
 
-function RouteInfoCard({ title, route, university }: { title: "Ida" | "Volta"; route: RouteItem; university: string }) {
-  const isReturn = route.schedule?.type === "volta";
-  return (
-    <div className="rounded-lg border border-border p-3 space-y-2 bg-background/40">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide font-medium text-muted-foreground">
-        <ArrowLeftRight className={cn("w-3 h-3", isReturn ? "text-accent rotate-180" : "text-primary")} /> {title}
-      </div>
-      <p className="font-heading font-bold text-foreground text-lg">{route.schedule?.time ?? "--:--"}</p>
-      <p className="text-xs text-muted-foreground">{displayRoutePath(route, university)}</p>
-      <div className="pt-2 border-t border-border text-xs text-muted-foreground space-y-1">
-        <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {route.driver?.nome ?? "Motorista a definir"}</p>
-        {route.vehicle && <p>{route.vehicle.name ?? "Ônibus"} · {route.vehicle.plate}</p>}
-      </div>
-    </div>
-  );
+function Summary({ label, value }: { label: string; value: number }) {
+  return <div className="bg-card border border-border rounded-xl p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-heading font-bold">{value}</p></div>;
 }
 
-function SummaryCard({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: number;
-  tone?: "default" | "primary" | "accent" | "success";
-}) {
-  const toneClass = {
-    default: "text-foreground",
-    primary: "text-primary",
-    accent: "text-accent",
-    success: "text-emerald-600 dark:text-emerald-400",
-  }[tone];
+function RouteCard({ title, route }: { title: string; route: RouteItem }) {
+  return <div className="rounded-lg border border-border p-3"><p className="text-xs text-muted-foreground flex items-center gap-1"><ArrowLeftRight className="w-3 h-3" />{title}</p><p className="text-lg font-bold">{route.schedule?.time ?? "--:--"}</p><p className="text-xs text-muted-foreground">{route.name}</p></div>;
+}
 
-  return (
-    <div className="bg-card border border-border rounded-xl p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn("text-2xl font-heading font-bold", toneClass)}>{value}</p>
-    </div>
-  );
+function SelectRoute({ label, routes, value, onChange }: { label: string; routes: RouteItem[]; value: string; onChange: (value: string) => void }) {
+  return <div className="space-y-2"><Label>{label}</Label><select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">{routes.map((route) => <option key={route.id} value={route.id}>{route.name} · {route.schedule?.time}</option>)}</select></div>;
+}
+
+function PointSelect({ label, points, value, onChange }: { label: string; points: PickupPoint[]; value: string; onChange: (value: string) => void }) {
+  return <div className="space-y-2"><Label>{label}</Label>{points.length > 1 ? <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{points.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}</select> : <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground flex gap-2"><MapPin className="w-4 h-4" />{points[0]?.name ?? "Ponto definido pela administração"}</div>}</div>;
 }

@@ -81,29 +81,68 @@ export async function getMyTripPassengers(req, res) {
 
   if (!user?.cityId) return res.status(403).json({ error: "Usuário sem cidade definida" });
 
-  const reservation = await prisma.reservation.findFirst({
+  const requestedRouteId = req.query?.routeId ? Number(req.query.routeId) : null;
+  const requestedDay = typeof req.query?.dayOfWeek === "string" ? req.query.dayOfWeek : null;
+  const requestedType = req.query?.type === "ida" || req.query?.type === "volta" ? req.query.type : null;
+
+  if (req.query?.routeId && (!Number.isInteger(requestedRouteId) || Number(requestedRouteId) <= 0)) {
+    return res.status(400).json({ error: "Rota inválida" });
+  }
+
+  const ownReservations = await prisma.reservation.findMany({
     where: {
       userId: user.id,
       status: "confirmed",
-      route: { cityId: user.cityId },
+      ...(requestedRouteId ? { routeId: requestedRouteId } : {}),
+      ...(requestedDay ? { dayOfWeek: requestedDay } : {}),
+      route: {
+        cityId: user.cityId,
+        ...(requestedType ? { schedule: { type: requestedType } } : {}),
+      },
     },
+    select: { routeId: true, dayOfWeek: true },
   });
 
-  if (!reservation) return res.json([]);
+  if (!ownReservations.length) return res.json([]);
+
+  const routeIds = Array.from(new Set(ownReservations.map((reservation) => reservation.routeId)));
+  const allowedTripKeys = new Set(
+    ownReservations.map((reservation) => `${reservation.routeId}:${reservation.dayOfWeek ?? ""}`),
+  );
 
   const passengers = await prisma.reservation.findMany({
     where: {
-      routeId: reservation.routeId,
+      routeId: { in: routeIds },
       status: "confirmed",
+      ...(requestedDay ? { dayOfWeek: requestedDay } : {}),
     },
-    include: { user: { include: { city: true } }, pickupPoint: true },
+    include: {
+      user: { include: { city: true } },
+      pickupPoint: true,
+      route: { include: { schedule: true } },
+    },
+    orderBy: [{ routeId: "asc" }, { user: { nome: "asc" } }],
   });
 
-  return res.json(passengers.map((p) => ({
-    nome: p.user.nome,
-    instituicao: p.user.institution,
-    cidade: p.user.city?.name,
-    uf: p.user.city?.state,
-    ponto: p.pickupPoint?.name,
-  })));
+  const unique = new Map<string, any>();
+  for (const passenger of passengers) {
+    const tripKey = `${passenger.routeId}:${passenger.dayOfWeek ?? ""}`;
+    if (!allowedTripKeys.has(tripKey)) continue;
+    if (requestedType && passenger.route.schedule.type !== requestedType) continue;
+
+    const key = `${passenger.userId}:${tripKey}`;
+    if (unique.has(key)) continue;
+    unique.set(key, {
+      nome: passenger.user.nome,
+      instituicao: passenger.user.institution,
+      cidade: passenger.user.city?.name,
+      uf: passenger.user.city?.state,
+      ponto: passenger.pickupPoint?.name,
+      routeId: passenger.routeId,
+      dayOfWeek: passenger.dayOfWeek,
+      type: passenger.route.schedule.type,
+    });
+  }
+
+  return res.json(Array.from(unique.values()));
 }

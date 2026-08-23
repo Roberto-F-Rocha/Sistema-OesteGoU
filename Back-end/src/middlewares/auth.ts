@@ -8,9 +8,9 @@ export async function auth(req, res, next) {
     return res.status(401).json({ error: "Token não enviado" });
   }
 
-  const [, token] = authHeader.split(" ");
+  const [scheme, token] = authHeader.split(" ");
 
-  if (!token) {
+  if (scheme !== "Bearer" || !token) {
     return res.status(401).json({ error: "Token mal formatado" });
   }
 
@@ -29,11 +29,20 @@ export async function auth(req, res, next) {
       return res.status(401).json({ error: "Usuário inválido" });
     }
 
+    if (user.status !== "active") {
+      return res.status(403).json({
+        error: "Usuário não autorizado",
+        reason: user.status,
+      });
+    }
+
     req.user = {
       id: user.id,
       name: user.nome,
+      nome: user.nome,
       email: user.email,
       role: user.role,
+      status: user.status,
       cityId: user.cityId,
       city: user.city
         ? {
@@ -45,7 +54,11 @@ export async function auth(req, res, next) {
     };
 
     return next();
-  } catch {
-    return res.status(401).json({ error: "Token inválido ou expirado" });
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ error: "Token expirado" });
+    }
+
+    return res.status(401).json({ error: "Token inválido" });
   }
 }
